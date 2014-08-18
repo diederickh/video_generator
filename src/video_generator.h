@@ -63,6 +63,11 @@
 #define RXS_MAX_CHARS 11
 #include <stdint.h>
 
+#if defined(__cplusplus)
+extern "C" {
+#endif
+
+
 typedef struct video_generator video_generator;
 typedef struct video_generator_char video_generator_char;
 
@@ -104,5 +109,9 @@ struct video_generator {
 int video_generator_init(video_generator* g, int width, int height, int fps);
 int video_generator_update(video_generator* g);
 int video_generator_clear(video_generator* g);
+
+#if defined(__cplusplus)
+} /* extern "C" */
+#endif
 
 #endif
