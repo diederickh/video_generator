@@ -334,6 +334,7 @@ int video_generator_init(video_generator* g, int w, int h, int fps, video_genera
       printf("Error: cannot create audio thread.\n");
       free(g->audio_buffer);
       g->audio_buffer = NULL;
+      return -7;
     }
   }
 
@@ -612,7 +613,7 @@ static void* audio_thread(void* gen) {
 
     now = ns();
     if (now > timeout) {
-      g->audio_callback(&g->audio_buffer[0], nbytes, num_samples);
+      g->audio_callback(&g->audio_buffer[dx], nbytes, num_samples);
       timeout = now + delay;
       dx += (num_samples * g->audio_nchannels);
       dx %= (max_dx);
