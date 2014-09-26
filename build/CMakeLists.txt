@@ -26,7 +26,12 @@ install(TARGETS videogenerator ARCHIVE DESTINATION lib)
 install(FILES ${lib_headers} DESTINATION include)
 
 add_executable(${app} ${sd}/example.c)
-target_link_libraries(${app} videogenerator)
+
+if (WIN32)
+else()
+  target_link_libraries(${app} videogenerator pthread)
+endif()
+
 install(TARGETS ${app} DESTINATION bin)
 
 

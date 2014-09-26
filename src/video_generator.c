@@ -334,6 +334,7 @@ int video_generator_init(video_generator* g, int w, int h, int fps, video_genera
       printf("Error: cannot create audio thread.\n");
       free(g->audio_buffer);
       g->audio_buffer = NULL;
+
     }
   }
 
@@ -583,6 +584,8 @@ static void* audio_thread(void* gen) {
   uint64_t num_samples = 1024;
   uint32_t nbytes = 0; 
   uint64_t max_dx = 0;
+
+  printf("Thread!\n");
 
   /* get the handle. */
   must_stop = 0;
