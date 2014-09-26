@@ -4,6 +4,7 @@ if [ ! -d build.release ] ; then
     mkdir build.release
 fi
 
+d=${PWD}
 triplet=""
 extern_dir=""
 is_mac=n
@@ -30,7 +31,7 @@ extern_path=${d}/../extern/${triplet}
 install_path=${d}/../install/${triplet}
 
 cd build.release
-cmake -DCMAKE_BUILD_TYPE=Release ../ 
+cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${install_path} ../ 
 cmake --build . --config Release --target install
 
 if [ -d ${install_path} ] ; then

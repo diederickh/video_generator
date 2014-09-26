@@ -61,32 +61,52 @@ static uint64_t ns() {
 }
 /* ----------------------------------------------------------------------- */
 
+uint64_t now = 0;
+uint64_t timeout = 0;
+uint64_t total_audio_frames = 0;
 static video_generator gen;
+static void on_audio(const int16_t* samples, uint32_t nbytes, uint32_t nframes);
 
 int main() {
-  uint64_t now, delay, timeout;
+  uint64_t delay ;
   printf("\n\nVideo Generator.\n\n");
 
-  if (video_generator_init(&gen, 320, 240, 25) < 0) {
+  if (video_generator_init(&gen, 320, 240, 25, on_audio) < 0) {
     printf("Error: cannot initialize the video generator.\n");
     exit(1);
   }
 
+  /* write raw audio to a file. */
+  FILE* fp = fopen("out_s16_44100_stereo.pcm", "wb");
+  if (!fp) {
+    printf("Error: cannot open pcm output file.\n");
+    exit(1);
+  }
+  fwrite(gen.audio_buffer, gen.audio_nbytes, 1, fp);
+  fclose(fp);
+
+
   delay = ((uint64_t)gen.fps) * 1e3; /* from us to ns. */
-  timeout = ns() + delay;
-  
+  timeout = 0; //s() + delay;
+
   while(1) {
-    now = ns();
+
     if (now > timeout) {
       timeout = now + delay;
       video_generator_update(&gen);
       printf("Frame: %llu\n", gen.frame);
-      /* 
-         Do something with the generated data:
-         encode(gen.planes, gen.strides, gen.frame);
-      */
+
     }
   }
   
+  
+  video_generator_clear(&gen);
+
   return 0;
+}
+
+static void on_audio(const int16_t* samples, uint32_t nbytes, uint32_t nframes) {
+  total_audio_frames += nframes;
+  now = ((1.0 / 44100.0) * 1e9) * total_audio_frames;
+  //printf("-- Got some audio samples: %u, total frames: %llu, now: %llu\n", nframes, total_audio_frames, now);
 }

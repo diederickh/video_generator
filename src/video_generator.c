@@ -1,7 +1,197 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 #include <video_generator.h>
+
+/* ----------------------------------------------------------------------------------- */
+/*                          T H R E A D I N G                                          */
+/* ----------------------------------------------------------------------------------- */
+
+#if defined(_WIN32)
+ 
+#define WIN32_LEAN_AND_MEAN
+
+  DWORD WINAPI thread_wrapper_function(LPVOID param) {
+    thread* handle = (thread*)param;
+    if (NULL == handle) { return 0; } 
+    if (NULL == handle->func) { return 0; } 
+    handle->func(handle->user);
+    return 0;
+  }
+
+  thread* thread_alloc(thread_function func, void* param) {
+    thread* t = (thread*)malloc(sizeof(thread));
+    if (NULL == t) { return NULL; } 
+    if (NULL == func) { return NULL; } 
+    t->user = param;
+    t->handle = CreateThread(NULL, 0, thread_wrapper_function, t, 0, &t->thread_id);
+    t->func = func;
+    if (NULL == t->handle) {
+      free(t);
+      t = NULL;
+    }
+    return t;
+  }
+
+  int thread_join(thread* t) {
+    if (NULL == t) { return -1; } 
+    DWORD r = WaitForSingleObject(t->handle, INFINITE);
+    if (WAIT_OBJECT_0 == r) { return 0 ; } 
+    else if (WAIT_ABANDONED == r) { return -2; } 
+    else if (WAIT_FAILED) { return -3; } 
+    return 0;
+  }
+
+  int mutex_init(mutex* m) {
+    if (NULL == m) { return -1; }
+    m->handle = CreateMutex(NULL, FALSE, NULL); /* default security, not owned by calling thread, unnamed. */
+    if (NULL == m->handle) { return -2; } 
+    return 0;
+  }
+
+  int mutex_destroy(mutex* m) {
+    if (NULL == m) { return -1; } 
+    if (0 == CloseHandle(m->handle)) { return -2; } 
+    return 0;
+  }
+
+  int mutex_lock(mutex* m) {
+    if (NULL == m) { return -1; }
+    DWORD r = WaitForSingleObject(m->handle, INFINITE);
+    if (WAIT_OBJECT_0 == r) { return 0 ; } 
+    else if (WAIT_ABANDONED == r) { return -2; } 
+    return 0;
+  }
+
+  int mutex_unlock(mutex* m) {
+    if (NULL == m) { return -1; } 
+    if (!ReleaseMutex(m->handle)) { return -2; } 
+    return 0;
+  }
+
+#elif defined(__linux) || defined(__APPLE__)
+
+  void* thread_function_wrapper(void* t) {
+    thread* handle = (thread*)t;
+    if (NULL == handle) { return NULL; }
+    handle->func(handle->user);
+    return NULL;
+  }
+
+  thread* thread_alloc(thread_function func, void* param) {
+    thread* t;
+    int r;
+    if (NULL == func) { return NULL; } 
+    t = (thread*)malloc(sizeof(thread));
+    if (!t) { return NULL; }
+    t->func = func;
+    t->user = param;
+    r = pthread_create(&t->handle, NULL, thread_function_wrapper, (void*)t);
+    if (0 != r) {
+      free(t);
+      t = NULL;
+      return NULL;
+    }
+    return t;
+  }
+
+  int mutex_init(mutex* m) {
+    if (NULL == m) { return -1; }
+    if (0 != pthread_mutex_init(&m->handle, NULL)) {  return -2;  }
+    return 0;
+  }
+
+  int mutex_destroy(mutex* m) {
+    if (NULL == m) { return -1; } 
+    if (0 != pthread_mutex_destroy(&m->handle)) { return -2; }
+    return 0;
+  }
+
+  int mutex_lock(mutex* m) {
+    if (NULL == m) { return -1; }
+    if (0 != pthread_mutex_lock(&m->handle)) { return -2; }
+    return 0;
+  }
+
+  int mutex_unlock(mutex* m) {
+    if (NULL == m) { return -1;  }
+    if (0 != pthread_mutex_unlock(&m->handle)) { return -2;  }
+    return 0;
+  }
+
+  int thread_join(thread* t) {
+    if (NULL == t) { return -1; }
+    if (0 != pthread_join(t->handle, NULL)) { return -2; } 
+    return 0;
+  }
+
+#endif /* #elif defined(__linux) or defined(__APPLE__) */
+
+/* ----------------------------------------------------------------------------------- */
+/*                          T I M E R                                                  */
+/* ----------------------------------------------------------------------------------- */
+
+/*
+  Easy embeddable cross-platform high resolution timer function. For each 
+  platform we select the high resolution timer. You can call the 'ns()' 
+  function in your file after embedding this. 
+*/
+#include <stdint.h>
+#if defined(__linux)
+#  define HAVE_POSIX_TIMER
+#  include <time.h>
+#  ifdef CLOCK_MONOTONIC
+#     define CLOCKID CLOCK_MONOTONIC
+#  else
+#     define CLOCKID CLOCK_REALTIME
+#  endif
+#elif defined(__APPLE__)
+#  define HAVE_MACH_TIMER
+#  include <mach/mach_time.h>
+#elif defined(_WIN32)
+#  define WIN32_LEAN_AND_MEAN
+#  include <windows.h>
+#endif
+static uint64_t ns() {
+  static uint64_t is_init = 0;
+#if defined(__APPLE__)
+  static mach_timebase_info_data_t info;
+  if (0 == is_init) {
+    mach_timebase_info(&info);
+    is_init = 1;
+  }
+  uint64_t now;
+  now = mach_absolute_time();
+  now *= info.numer;
+  now /= info.denom;
+  return now;
+#elif defined(__linux)
+  static struct timespec linux_rate;
+  if (0 == is_init) {
+    clock_getres(CLOCKID, &linux_rate);
+    is_init = 1;
+  }
+  uint64_t now;
+  struct timespec spec;
+  clock_gettime(CLOCKID, &spec);
+  now = spec.tv_sec * 1.0e9 + spec.tv_nsec;
+  return now;
+#elif defined(_WIN32)
+  static LARGE_INTEGER win_frequency;
+  if (0 == is_init) {
+    QueryPerformanceFrequency(&win_frequency);
+    is_init = 1;
+  }
+  LARGE_INTEGER now;
+  QueryPerformanceCounter(&now);
+  return (uint64_t) ((1e9 * now.QuadPart)  / win_frequency.QuadPart);
+#endif
+}
+
+/* ----------------------------------------------------------------------------------- */
+/*                          V I D E O   G E N E R A T O  R                             */
+/* ----------------------------------------------------------------------------------- */
 
 #define CLIP(X) ( (X) > 255 ? 255 : (X) < 0 ? 0 : X)
 #define RGB2Y(R, G, B) CLIP(( (  66 * (R) + 129 * (G) +  25 * (B) + 128) >> 8) +  16)
@@ -13,8 +203,18 @@ static int numbersfont_char_data[] = {48,109,0,25,39,3,12,31,49,239,0,15,39,6,12
 static int fill(video_generator* gen, int x, int y, int w, int h, int r, int g, int b);
 static int add_number_string(video_generator* gen, const char* str, int x, int y);
 static int add_char(video_generator* gen, video_generator_char* kar, int x, int y);
+static void* audio_thread(void* gen); /* When we need to generate audio, we do this in another thread. So be aware that the callback will be called from this thread! */
 
-int video_generator_init(video_generator* g, int w, int h, int fps) {
+/*
+  
+  @param g       Pointer to the audio_generator you want to initialize.
+  @param w       Width of the generated video frame.
+  @param h       Height of the generated video frame.
+  @param fps     Framerate, e.g. 25
+  @param audio   Use audio, will generate blip/blop, int16, stereo, interleaved, 441000
+
+ */
+int video_generator_init(video_generator* g, int w, int h, int fps, video_generator_audio_callback audiocb) {
 
   int i = 0;
   int dx = 0;
@@ -72,10 +272,87 @@ int video_generator_init(video_generator* g, int w, int h, int fps) {
   g->font_h = 50;
   g->font_line_height = 63;
 
+  /* default audio settings. */
+  g->audio_bip_frequency = 0;
+  g->audio_bop_frequency = 0;
+  g->audio_nchannels = 0;
+  g->audio_samplerate = 0;
+  g->audio_nbytes = 0;
+  g->audio_buffer = NULL;
+  g->audio_callback = NULL;
+  g->audio_thread = NULL;
+
+  /* initialize audio */
+  if (NULL != audiocb) {
+
+    /* we allocate a buffer up to 4 seconds. */
+    g->audio_bip_frequency = 600;
+    g->audio_bop_frequency = 300;
+    g->audio_nchannels = 2;
+    g->audio_samplerate = 44100;
+    g->audio_nseconds = 4;
+    g->audio_nbytes = sizeof(int16_t) * g->audio_samplerate * g->audio_nchannels * g->audio_nseconds;
+    g->audio_callback = audiocb;
+
+    /* alloc the buffer. */
+    g->audio_buffer = (int16_t*)malloc(g->audio_nbytes); 
+    if (!g->audio_buffer) {
+      printf("Error while allocating the audio buffer.");
+      g->audio_buffer = NULL;
+      return -5;
+    }
+
+    /* fill with silence */
+    memset((uint8_t*)g->audio_buffer, 0x00, g->audio_nbytes);
+
+    /* fill with blib/blop. */
+    double sa = sin( (6.28318530718/g->audio_samplerate) );
+    int dx = 0;
+
+    /* bip */
+    for (int i = g->audio_samplerate;  i < (g->audio_samplerate * 2); ++i) {
+      dx = i * 2;
+      g->audio_buffer[dx + 0] = 10000 * sin( (6.28318530718/g->audio_samplerate)* g->audio_bip_frequency * i);
+      g->audio_buffer[dx + 1] = g->audio_buffer[dx + 0];
+    }
+
+    /* bop */
+    for (int i = (g->audio_samplerate * 3); i < (g->audio_samplerate * 4); ++i) {
+      dx = i * 2;
+      g->audio_buffer[dx + 0] = 10000 * sin( (6.28318530718/g->audio_samplerate)* g->audio_bop_frequency * i);
+      g->audio_buffer[dx + 1] = g->audio_buffer[dx + 0];
+    }
+
+    /* init mutex. */
+    if (0 != mutex_init(&g->audio_mutex)) {
+      printf("Error: cannot initialize the audio mutex!");
+      free(g->audio_buffer);
+      g->audio_buffer = NULL;
+      return -6;
+    }
+
+    /* start audio thread. */
+    g->audio_thread = thread_alloc(audio_thread, (void*)g);
+    if (NULL == g->audio_thread) {
+      printf("Error: cannot create audio thread.\n");
+      free(g->audio_buffer);
+      g->audio_buffer = NULL;
+    }
+  }
+
   return 0;
 }
 
 int video_generator_clear(video_generator* g) {
+
+  /* stop the audio thread if it's running. */
+  if (NULL != g->audio_thread) {
+    mutex_lock(&g->audio_mutex);
+      g->audio_thread_must_stop = 1;
+    mutex_unlock(&g->audio_mutex);
+    thread_join(g->audio_thread);
+    g->audio_thread = NULL;
+  }
 
   if (!g) { return -1; } 
   if (!g->width) { return -2; } 
@@ -290,4 +567,67 @@ static int add_char(video_generator* gen, video_generator_char* kar, int x, int 
   }
 
   return 0;
+}
+
+/* ----------------------------------------------------------------------------------- */
+/*                          A U D I O  G E N E R A T O R                               */
+/* ----------------------------------------------------------------------------------- */
+
+static void* audio_thread(void* gen) {
+  video_generator* g;
+  uint8_t must_stop;
+  uint64_t now, delay, timeout, dx;
+  uint64_t num_samples = 1024;
+  uint32_t nbytes = 0; 
+  uint64_t max_dx = 0;
+
+  printf("AUDIO GENERATOR THREAD!\n");
+
+  /* get the handle. */
+  must_stop = 0;
+  g = (video_generator*)gen;
+  if (NULL == g) {
+    printf("Not supposed to happen but the audio thread cannot get a handle to the generator.\n");
+    exit(1);
+  }
+  
+  /* init */
+  now = 0;
+  timeout = 0;
+  dx = 0;
+  //delay = (num_samples * ((double)1.0/g->audio_samplerate) * 1e9) 
+  delay = (1.0 / (g->audio_samplerate / num_samples)) * 1e9;
+  nbytes = num_samples * sizeof(uint16_t) * g->audio_nchannels;
+  max_dx = (g->audio_nchannels * g->audio_samplerate) * g->audio_nseconds;
+
+  printf("Num samples: %u delay: %llu, delay millis: %f, %f\n", nbytes, delay, (delay / 1e6), 86 *  (delay / 1e9));
+  uint64_t calls = 0;
+
+  while (1) {
+#if 0
+    mutex_lock(&g->audio_mutex);
+      must_stop = g->audio_thread_must_stop;
+    mutex_unlock(&g->audio_mutex);
+#endif
+    if (1 == must_stop) {
+      printf("Stopping the thread.\n");
+      break;
+    }
+
+    now = ns();
+    if (now > timeout) {
+      g->audio_callback(&g->audio_buffer[0], nbytes, num_samples);
+      timeout = now + delay;
+      
+      dx += (num_samples * g->audio_nchannels);
+      if (dx > max_dx) {
+        exit(0);
+      }
+      dx %= (max_dx);
+      calls++;
+      printf("Current dx: %llu, MAX dx: %llu, CALLS: %llu\n", dx, max_dx, calls);
+    }
+  }
+
+  return NULL;
 }
