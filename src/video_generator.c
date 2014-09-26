@@ -305,21 +305,18 @@ int video_generator_init(video_generator* g, int w, int h, int fps, video_genera
     /* fill with silence */
     memset((uint8_t*)g->audio_buffer, 0x00, g->audio_nbytes);
 
-    /* fill with blib/blop. */
-    double sa = sin( (6.28318530718/g->audio_samplerate) );
-    int dx = 0;
-
     /* bip */
+    int dx = 0;
     for (int i = g->audio_samplerate;  i < (g->audio_samplerate * 2); ++i) {
       dx = i * 2;
-      g->audio_buffer[dx + 0] = 10000 * sin( (6.28318530718/g->audio_samplerate)* g->audio_bip_frequency * i);
+      g->audio_buffer[dx + 0] = 10000 * sin( (6.28318530718/g->audio_samplerate) * g->audio_bip_frequency * i);
       g->audio_buffer[dx + 1] = g->audio_buffer[dx + 0];
     }
 
     /* bop */
     for (int i = (g->audio_samplerate * 3); i < (g->audio_samplerate * 4); ++i) {
       dx = i * 2;
-      g->audio_buffer[dx + 0] = 10000 * sin( (6.28318530718/g->audio_samplerate)* g->audio_bop_frequency * i);
+      g->audio_buffer[dx + 0] = 10000 * sin( (6.28318530718/g->audio_samplerate) * g->audio_bop_frequency * i);
       g->audio_buffer[dx + 1] = g->audio_buffer[dx + 0];
     }
 
@@ -352,6 +349,12 @@ int video_generator_clear(video_generator* g) {
     mutex_unlock(&g->audio_mutex);
     thread_join(g->audio_thread);
     g->audio_thread = NULL;
+
+    /* free the audio buffer. */
+    if (NULL != g->audio_buffer) {
+      free(g->audio_buffer);
+      g->audio_buffer = NULL;
+    }
   }
 
   if (!g) { return -1; } 
@@ -581,8 +584,6 @@ static void* audio_thread(void* gen) {
   uint32_t nbytes = 0; 
   uint64_t max_dx = 0;
 
-  printf("AUDIO GENERATOR THREAD!\n");
-
   /* get the handle. */
   must_stop = 0;
   g = (video_generator*)gen;
@@ -595,22 +596,17 @@ static void* audio_thread(void* gen) {
   now = 0;
   timeout = 0;
   dx = 0;
-  //delay = (num_samples * ((double)1.0/g->audio_samplerate) * 1e9) 
-  delay = (1.0 / (g->audio_samplerate / num_samples)) * 1e9;
+  delay = (num_samples * ((double)1.0/g->audio_samplerate) * 1e9);
   nbytes = num_samples * sizeof(uint16_t) * g->audio_nchannels;
   max_dx = (g->audio_nchannels * g->audio_samplerate) * g->audio_nseconds;
 
-  printf("Num samples: %u delay: %llu, delay millis: %f, %f\n", nbytes, delay, (delay / 1e6), 86 *  (delay / 1e9));
-  uint64_t calls = 0;
-
   while (1) {
-#if 0
+
     mutex_lock(&g->audio_mutex);
       must_stop = g->audio_thread_must_stop;
     mutex_unlock(&g->audio_mutex);
-#endif
+
     if (1 == must_stop) {
-      printf("Stopping the thread.\n");
       break;
     }
 
@@ -618,14 +614,8 @@ static void* audio_thread(void* gen) {
     if (now > timeout) {
       g->audio_callback(&g->audio_buffer[0], nbytes, num_samples);
       timeout = now + delay;
-      
       dx += (num_samples * g->audio_nchannels);
-      if (dx > max_dx) {
-        exit(0);
-      }
       dx %= (max_dx);
-      calls++;
-      printf("Current dx: %llu, MAX dx: %llu, CALLS: %llu\n", dx, max_dx, calls);
     }
   }
 
