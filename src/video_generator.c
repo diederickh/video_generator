@@ -387,6 +387,7 @@ int video_generator_clear(video_generator* g) {
 int video_generator_update(video_generator* g) {
 
   double perc;
+  int is_bip, is_bop;
   int text_w, text_x, text_y, i;
   int32_t bar_h, time, speed, start_y, nlines, h;
   uint64_t days, hours, minutes, seconds;
@@ -467,6 +468,24 @@ int video_generator_update(video_generator* g) {
   for (i = start_y; i < end_y; ++i) {
     memset(g->u + i * stride, uc, stride);
     memset(g->v + i * stride, vc, stride);
+  }
+
+  /* draw blip/blop visuals. */
+  if (NULL != g->audio_buffer) {
+    mutex_lock(&g->audio_mutex);
+    {
+      is_bop = g->audio_is_bop;
+      is_bip = g->audio_is_bip;
+
+    }
+    mutex_unlock(&g->audio_mutex);
+
+    if (is_bip == 1) {
+      fill(g, g->width/2 - 25, 10, 50, 50, 0, 0, 0);
+    }
+    if (is_bop == 1) {
+      fill(g, g->width/2 - 25, 10, 50, 50, 255, 0, 0);
+    }
   }
 
   seconds = (g->frame/ g->fps_den);
@@ -580,12 +599,20 @@ static int add_char(video_generator* gen, video_generator_char* kar, int x, int 
 static void* audio_thread(void* gen) {
   video_generator* g;
   uint8_t must_stop;
-  uint64_t now, delay, timeout, dx;
+  uint64_t now, delay, timeout, dx, prev_dx, bip_start_dx, bip_end_dx, bop_start_dx, bop_end_dx;
   uint64_t num_samples = 1024;
   uint32_t nbytes = 0; 
-  uint64_t max_dx = 0;
+  uint8_t* tmp_buffer = NULL;
+  uint8_t* audio_buffer = NULL;
+  int bytes_to_end = 0;
+  int bytes_from_start = 0;
+  int bytes_needed = 0;
+  int bytes_total = 0;
+  int is_bip = 0;
+  int prev_is_bip = 0;
+  int is_bop = 0;
+  int prev_is_bop = 0;
 
-  printf("Thread!\n");
 
   /* get the handle. */
   must_stop = 0;
@@ -600,8 +627,15 @@ static void* audio_thread(void* gen) {
   timeout = 0;
   dx = 0;
   delay = (num_samples * ((double)1.0/g->audio_samplerate) * 1e9);
-  nbytes = num_samples * sizeof(uint16_t) * g->audio_nchannels;
-  max_dx = (g->audio_nchannels * g->audio_samplerate) * g->audio_nseconds;
+  nbytes = num_samples * sizeof(int16_t) * g->audio_nchannels;
+  tmp_buffer = (uint8_t*)malloc(nbytes);
+  audio_buffer = (uint8_t*)g->audio_buffer;
+  bytes_needed = nbytes;
+  bytes_total = g->audio_nbytes;
+  bip_start_dx = (bytes_total / g->audio_nseconds);
+  bip_end_dx = bip_start_dx + (bytes_total / g->audio_nseconds);
+  bop_start_dx = bip_end_dx + (bytes_total / g->audio_nseconds);
+  bop_end_dx = bop_start_dx + (bytes_total / g->audio_nseconds);
 
   while (1) {
 
@@ -615,12 +649,68 @@ static void* audio_thread(void* gen) {
 
     now = ns();
     if (now > timeout) {
-      g->audio_callback(&g->audio_buffer[dx], nbytes, num_samples);
+      
+      bytes_to_end = bytes_total - dx;
+      if (bytes_to_end < bytes_needed) {
+        /* We need to read some bytes till the end, then from the start. */
+         memcpy(tmp_buffer, audio_buffer+dx, bytes_to_end-1);
+        
+        /* Read from the start. */
+        bytes_from_start = bytes_needed - bytes_to_end;
+        memcpy(tmp_buffer + bytes_to_end, audio_buffer, bytes_from_start);
+        g->audio_callback((int16_t*)tmp_buffer, nbytes, num_samples);
+
+        dx = bytes_from_start;
+      }
+      else {
+        /* We can read a complete chunk. */
+        g->audio_callback((int16_t*)(audio_buffer + dx), nbytes, num_samples);
+        dx += nbytes;
+      }
+      
+      /* Playing bip? */
+      is_bip = (dx >= bip_start_dx && dx <= bip_end_dx) ? 1 : 0;
+      is_bop = (dx >= bop_start_dx && dx <= bop_end_dx) ? 1 : 0;
+
+      /* Update bip / bop flags. */
+      if (is_bip != prev_is_bip) {
+        mutex_lock(&g->audio_mutex);
+          g->audio_is_bip = is_bip;
+        mutex_unlock(&g->audio_mutex);
+      }
+      if (is_bop != prev_is_bop) {
+        mutex_lock(&g->audio_mutex);
+          g->audio_is_bop = is_bop;
+        mutex_unlock(&g->audio_mutex);
+      }
+
+      
+      #if 0
+      if (prev_dx < bip_dx && dx >= bip_dx) {
+         mutex_lock(&g->audio_mutex);
+          g->audio_is_bip = 1;
+        mutex_unlock(&g->audio_mutex);
+        printf("--------->>>>>>>>>>>>>>>> BIP  -------------------------- \n");
+        //}
+      }
+      else if(prev_dx < bop_dx && dx >= bop_dx) {
+        printf("------------------------ BOP <<<<<<<<<<<<<<<<<<<<< -------------------------- \n");
+      }
+      else {
+        printf("BIP_DX: %llu, BOP_DX: %llu, DX: %llu\n", bip_dx, bop_dx, dx);
+      }
+      #endif
+
+      prev_dx = dx;
       timeout = now + delay;
-      dx += (num_samples * g->audio_nchannels);
-      dx %= (max_dx);
+
+      prev_is_bip = is_bip;
+      prev_is_bop = is_bop;
     }
   }
+
+  free(tmp_buffer);
+  tmp_buffer = NULL;
 
   return NULL;
 }

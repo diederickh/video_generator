@@ -195,6 +195,8 @@ struct video_generator {
   thread* audio_thread;                                   /* the audio callback is called from another thread to simulate microphone input.*/
   mutex audio_mutex;                                      /* used to sync. shared data */
   uint8_t audio_thread_must_stop;                         /* is set to 1 when the thread needs to stop */
+  uint8_t audio_is_bip;                                   /* is set to 1 as soon as the bip audio part it passed into the callback. */
+  uint8_t audio_is_bop;                                   /* is set to 1 as soon as the bop audio part is passed into the callback. */ 
 };
 
 int video_generator_init(video_generator* g, 
