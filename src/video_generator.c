@@ -220,6 +220,7 @@ int video_generator_init(video_generator* g, int w, int h, int fps, video_genera
   int dx = 0;
   int max_els = RXS_MAX_CHARS * 8; /* members per char */
   video_generator_char* c = NULL;
+  int num_frames; /* used for bip/bop calculations. */
 
   if (!g) { return -1; } 
   if (!w) { return -2; } 
@@ -288,6 +289,8 @@ int video_generator_init(video_generator* g, int w, int h, int fps, video_genera
     /* we allocate a buffer up to 4 seconds. */
     g->audio_bip_frequency = 600;
     g->audio_bop_frequency = 300;
+    g->audio_bip_millis = 100;
+    g->audio_bop_millis = 100;
     g->audio_nchannels = 2;
     g->audio_samplerate = 44100;
     g->audio_nseconds = 4;
@@ -306,15 +309,17 @@ int video_generator_init(video_generator* g, int w, int h, int fps, video_genera
     memset((uint8_t*)g->audio_buffer, 0x00, g->audio_nbytes);
 
     /* bip */
-    int dx = 0;
-    for (int i = g->audio_samplerate;  i < (g->audio_samplerate * 2); ++i) {
+    dx= 0;
+    num_frames = (g->audio_bip_millis/1000.0) * g->audio_samplerate;
+    for (i = g->audio_samplerate;  i < (g->audio_samplerate + num_frames); ++i) {
       dx = i * 2;
       g->audio_buffer[dx + 0] = 10000 * sin( (6.28318530718/g->audio_samplerate) * g->audio_bip_frequency * i);
       g->audio_buffer[dx + 1] = g->audio_buffer[dx + 0];
     }
 
     /* bop */
-    for (int i = (g->audio_samplerate * 3); i < (g->audio_samplerate * 4); ++i) {
+    num_frames = (g->audio_bip_millis/1000.0) * g->audio_samplerate;
+    for (i = (g->audio_samplerate * 3); i < (g->audio_samplerate * 3 + num_frames); ++i) {
       dx = i * 2;
       g->audio_buffer[dx + 0] = 10000 * sin( (6.28318530718/g->audio_samplerate) * g->audio_bop_frequency * i);
       g->audio_buffer[dx + 1] = g->audio_buffer[dx + 0];
@@ -393,6 +398,7 @@ int video_generator_update(video_generator* g) {
   uint64_t days, hours, minutes, seconds;
   uint32_t stride, end_y;
   char timebuf[512] = { 0 } ;
+  int text_r, text_g, text_b;
   int rc, gc, bc, yc, uc, vc, dx;
   int colors[] = { 
     255, 255, 255,  // white
@@ -407,6 +413,10 @@ int video_generator_update(video_generator* g) {
   if (!g) { return -1; } 
   if (!g->width) { return -2; } 
   if (!g->height) { return -3; } 
+
+  text_r = 0;
+  text_g = 0;
+  text_b = 0;
 
   h = g->height - 1;
   bar_h = g->height / 5;
@@ -481,10 +491,14 @@ int video_generator_update(video_generator* g) {
     mutex_unlock(&g->audio_mutex);
 
     if (is_bip == 1) {
-      fill(g, g->width/2 - 25, 10, 50, 50, 0, 0, 0);
+      text_r = 0;
+      text_g = 0;
+      text_b = 255;
     }
     if (is_bop == 1) {
-      fill(g, g->width/2 - 25, 10, 50, 50, 255, 0, 0);
+      text_r = 255;
+      text_g = 0;
+      text_b = 0;
     }
   }
 
@@ -499,7 +513,7 @@ int video_generator_update(video_generator* g) {
   text_x = (g->width / 2) - (text_w / 2);
   text_y = (g->height / 2) - 50;
 
-  fill(g, text_x, text_y, text_w, 100, 0, 0, 0);
+  fill(g, text_x, text_y, text_w, 100, text_r, text_g, text_b);
 
   sprintf(timebuf, "%03llu:%02llu:%02llu:%02llu", days, hours, minutes, seconds);
   add_number_string(g, timebuf, text_x + 20, text_y + 20);
@@ -599,7 +613,7 @@ static int add_char(video_generator* gen, video_generator_char* kar, int x, int 
 static void* audio_thread(void* gen) {
   video_generator* g;
   uint8_t must_stop;
-  uint64_t now, delay, timeout, dx, prev_dx, bip_start_dx, bip_end_dx, bop_start_dx, bop_end_dx;
+  uint64_t now, delay, timeout, dx, bip_start_dx, bip_end_dx, bop_start_dx, bop_end_dx;
   uint64_t num_samples = 1024;
   uint32_t nbytes = 0; 
   uint8_t* tmp_buffer = NULL;
@@ -609,9 +623,13 @@ static void* audio_thread(void* gen) {
   int bytes_needed = 0;
   int bytes_total = 0;
   int is_bip = 0;
-  int prev_is_bip = 0;
   int is_bop = 0;
+  int prev_is_bip = 0;
   int prev_is_bop = 0;
+  int num_bip_frames = 0;
+  int num_bip_bytes = 0;
+  int num_bop_frames = 0;
+  int num_bop_bytes = 0;
 
 
   /* get the handle. */
@@ -632,10 +650,16 @@ static void* audio_thread(void* gen) {
   audio_buffer = (uint8_t*)g->audio_buffer;
   bytes_needed = nbytes;
   bytes_total = g->audio_nbytes;
+
+  /* calc the bip/bop start and end positions. */
+  num_bip_frames = (g->audio_bip_millis/1000.0) * g->audio_samplerate;
+  num_bip_bytes = sizeof(int16_t) * g->audio_nchannels * num_bip_frames;
+  num_bop_frames = (g->audio_bop_millis/1000.0) * g->audio_samplerate;
+  num_bop_bytes = sizeof(int16_t) * g->audio_nchannels * num_bop_frames;
   bip_start_dx = (bytes_total / g->audio_nseconds);
-  bip_end_dx = bip_start_dx + (bytes_total / g->audio_nseconds);
-  bop_start_dx = bip_end_dx + (bytes_total / g->audio_nseconds);
-  bop_end_dx = bop_start_dx + (bytes_total / g->audio_nseconds);
+  bip_end_dx = bip_start_dx + num_bip_bytes;
+  bop_start_dx = ((bytes_total / g->audio_nseconds) * 3);
+  bop_end_dx = bop_start_dx + num_bop_bytes;
 
   while (1) {
 
@@ -649,6 +673,10 @@ static void* audio_thread(void* gen) {
 
     now = ns();
     if (now > timeout) {
+
+      /* Playing bip? */
+      is_bip = (dx >= bip_start_dx && dx <= bip_end_dx) ? 1 : 0;
+      is_bop = (dx >= bop_start_dx && dx <= bop_end_dx) ? 1 : 0;
       
       bytes_to_end = bytes_total - dx;
       if (bytes_to_end < bytes_needed) {
@@ -668,9 +696,6 @@ static void* audio_thread(void* gen) {
         dx += nbytes;
       }
       
-      /* Playing bip? */
-      is_bip = (dx >= bip_start_dx && dx <= bip_end_dx) ? 1 : 0;
-      is_bop = (dx >= bop_start_dx && dx <= bop_end_dx) ? 1 : 0;
 
       /* Update bip / bop flags. */
       if (is_bip != prev_is_bip) {
@@ -684,26 +709,7 @@ static void* audio_thread(void* gen) {
         mutex_unlock(&g->audio_mutex);
       }
 
-      
-      #if 0
-      if (prev_dx < bip_dx && dx >= bip_dx) {
-         mutex_lock(&g->audio_mutex);
-          g->audio_is_bip = 1;
-        mutex_unlock(&g->audio_mutex);
-        printf("--------->>>>>>>>>>>>>>>> BIP  -------------------------- \n");
-        //}
-      }
-      else if(prev_dx < bop_dx && dx >= bop_dx) {
-        printf("------------------------ BOP <<<<<<<<<<<<<<<<<<<<< -------------------------- \n");
-      }
-      else {
-        printf("BIP_DX: %llu, BOP_DX: %llu, DX: %llu\n", bip_dx, bop_dx, dx);
-      }
-      #endif
-
-      prev_dx = dx;
       timeout = now + delay;
-
       prev_is_bip = is_bip;
       prev_is_bop = is_bop;
     }
