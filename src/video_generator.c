@@ -679,9 +679,15 @@ static void* audio_thread(void* gen) {
       is_bop = (dx >= bop_start_dx && dx <= bop_end_dx) ? 1 : 0;
       
       bytes_to_end = bytes_total - dx;
+      if (0 == bytes_to_end) {
+        dx = 0;
+        bytes_to_end = bytes_total;
+      }
+
       if (bytes_to_end < bytes_needed) {
+
         /* We need to read some bytes till the end, then from the start. */
-         memcpy(tmp_buffer, audio_buffer+dx, bytes_to_end-1);
+        memcpy(tmp_buffer, audio_buffer+dx, bytes_to_end-1);
         
         /* Read from the start. */
         bytes_from_start = bytes_needed - bytes_to_end;
@@ -695,7 +701,6 @@ static void* audio_thread(void* gen) {
         g->audio_callback((int16_t*)(audio_buffer + dx), nbytes, num_samples);
         dx += nbytes;
       }
-      
 
       /* Update bip / bop flags. */
       if (is_bip != prev_is_bip) {
