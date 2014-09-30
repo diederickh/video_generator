@@ -522,7 +522,7 @@ int video_generator_update(video_generator* g) {
   return 0;
 }
 
-static int fill(video_generator* gen, int x, int y, int w, int h, int r, int g, int b) {
+inline int fill(video_generator* gen, int x, int y, int w, int h, int r, int g, int b) {
 
   // Y 
   int yc = RGB2Y(r,g,b);
