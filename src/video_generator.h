@@ -27,7 +27,7 @@
 
      video_generator gen;
 
-     if (video_generator_init(&gen, WIDTH, HEIGHT, FPS) < 0) {
+     if (video_generator_init(&gen, WIDTH, HEIGHT, FPS, NULL) < 0) {
        printf("Error: cannot initialize the generator.\n");
        exit(1);
      }
