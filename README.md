@@ -15,6 +15,8 @@ you see a black rectangle which displays the time. This time is based on the num
 of generated frames and framerate. It's up to the user to generate enough frames 
 to have a stable framerate.
 
+<img src="https://farm9.staticflickr.com/8643/15681350220_4705c8885f_o.png" alt="Example of generated video">
+
 Compiling
 ----------
 You can either just include the `video_generator.c` file in your project or use

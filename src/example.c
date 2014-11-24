@@ -27,8 +27,8 @@ int main() {
   printf("\n\nVideo Generator.\n\n");
 
   /* Set the video generator settings. */
-  cfg.width = 320;
-  cfg.height = 240;
+  cfg.width = 800;
+  cfg.height = 600;
   cfg.fps = 25;
   cfg.audio_callback = on_audio;
   cfg.bip_frequency = 500;
