@@ -40,40 +40,40 @@ Example
 
 ````c++
 
-     fp = fopen("output.yuv", "wb");
+fp = fopen("output.yuv", "wb");
 
-     video_generator gen;
-     video_geneator_settings cfg;
-     
-     cfg.width = WIDTH;
-     cfg.height = HEIGHT;
-     cfg.fps = FPS;
-     
-     if (0 != video_generator_init(&cfg, &gen)) {
-       printf("Error: cannot initialize the generator.\n");
-       exit(1);
-     }
+video_generator gen;
+video_geneator_settings cfg;
 
-     while(1) {
+cfg.width = WIDTH;
+cfg.height = HEIGHT;
+cfg.fps = FPS;
 
-        printf("Frame: %llu\n", gen.frame);
+if (0 != video_generator_init(&cfg, &gen)) {
+  printf("Error: cannot initialize the generator.\n");
+  exit(1);
+}
 
-        video_generator_update(&gen);
+while(1) {
 
-        // write video planes to a file
-        fwrite((char*)gen.y, gen.ybytes,1,  fp);
-        fwrite((char*)gen.u, gen.ubytes,1, fp);
-        fwrite((char*)gen.v, gen.vbytes,1, fp);
+   printf("Frame: %llu\n", gen.frame);
 
-        if (gen.frame > 250) { 
-          break;
-        }
+   video_generator_update(&gen);
 
-        usleep(gen.fps);
-     }
+   // write video planes to a file
+   fwrite((char*)gen.y, gen.ybytes,1,  fp);
+   fwrite((char*)gen.u, gen.ubytes,1, fp);
+   fwrite((char*)gen.v, gen.vbytes,1, fp);
 
-    fclose(fp);
+   if (gen.frame > 250) { 
+     break;
+   }
 
-    video_generator_clear(&gen);
+   usleep(gen.fps);
+}
+
+fclose(fp);
+
+video_generator_clear(&gen);
 
 ````
