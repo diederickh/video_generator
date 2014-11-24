@@ -27,11 +27,17 @@ install(FILES ${lib_headers} DESTINATION include)
 
 add_executable(${app} ${sd}/example.c ${lib_sources})
 
+if (UNIX AND NOT APPLE)
+  target_link_libraries(${app} m)
+endif()
+
 if (WIN32)
 else()
   target_link_libraries(${app} videogenerator pthread)
 endif()
 
 install(TARGETS ${app} DESTINATION bin)
+
+
 
 
