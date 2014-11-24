@@ -205,16 +205,7 @@ static int add_number_string(video_generator* gen, const char* str, int x, int y
 static int add_char(video_generator* gen, video_generator_char* kar, int x, int y);
 static void* audio_thread(void* gen); /* When we need to generate audio, we do this in another thread. So be aware that the callback will be called from this thread! */
 
-/*
-  
-  @param g       Pointer to the audio_generator you want to initialize.
-  @param w       Width of the generated video frame.
-  @param h       Height of the generated video frame.
-  @param fps     Framerate, e.g. 25
-  @param audio   Use audio, will generate blip/blop, int16, stereo, interleaved, 441000
-
- */
-int video_generator_init(video_generator* g, int w, int h, int fps, video_generator_audio_callback audiocb) {
+int video_generator_init(video_generator_settings* cfg, video_generator* g) {
 
   int i = 0;
   int dx = 0;
@@ -223,19 +214,20 @@ int video_generator_init(video_generator* g, int w, int h, int fps, video_genera
   int num_frames; /* used for bip/bop calculations. */
 
   if (!g) { return -1; } 
-  if (!w) { return -2; } 
-  if (!h) { return -3; } 
-  if (!fps) { return -4; } 
+  if (!cfg) { return -2; } 
+  if (!cfg->width) { return -3; } 
+  if (!cfg->height) { return -4; } 
+  if (!cfg->fps) { return -5; } 
   
   /* initalize members */
   g->frame = 0;
-  g->ybytes = w * h;
-  g->ubytes = (w * 0.5) * (h * 0.5);
+  g->ybytes = cfg->width * cfg->height;
+  g->ubytes = (cfg->width * 0.5) * (cfg->height * 0.5);
   g->vbytes = g->ubytes;
   g->nbytes = g->ybytes + g->ubytes + g->vbytes;
-  g->width = w;
-  g->height = h;
-  g->fps = (1.0 / fps) * 1000 * 1000;
+  g->width = cfg->width;
+  g->height = cfg->height;
+  g->fps = (1.0 / cfg->fps) * 1000 * 1000;
 
   g->y = (uint8_t*)malloc(g->nbytes);
   g->u = g->y + g->ybytes;
@@ -245,14 +237,14 @@ int video_generator_init(video_generator* g, int w, int h, int fps, video_genera
   g->planes[1] = g->u;
   g->planes[2] = g->v;
 
-  g->strides[0] = w;
-  g->strides[1] = w * 0.5;
-  g->strides[2] = w * 0.5;
+  g->strides[0] = cfg->width;
+  g->strides[1] = cfg->width * 0.5;
+  g->strides[2] = cfg->width * 0.5;
 
-  g->step = (1.0 / (5 * fps)); /* move the bar in 5 seconds from top to bottom */
+  g->step = (1.0 / (5 * cfg->fps)); /* move the bar in 5 seconds from top to bottom */
   g->perc = 0.0;
   g->fps_num = 1;
-  g->fps_den = fps;
+  g->fps_den = cfg->fps;
 
   /* initialize the characters */
   while (i < max_els) {
@@ -284,25 +276,26 @@ int video_generator_init(video_generator* g, int w, int h, int fps, video_genera
   g->audio_thread = NULL;
 
   /* initialize audio */
-  if (NULL != audiocb) {
+  if (NULL != cfg->audio_callback) {
 
     /* we allocate a buffer up to 4 seconds. */
-    g->audio_bip_frequency = 600;
-    g->audio_bop_frequency = 300;
+    g->audio_bip_frequency = cfg->bip_frequency;
+    g->audio_bop_frequency = cfg->bop_frequency;
     g->audio_bip_millis = 100;
     g->audio_bop_millis = 100;
     g->audio_nchannels = 2;
     g->audio_samplerate = 44100;
+    g->audio_nsamples = 1024;
     g->audio_nseconds = 4;
     g->audio_nbytes = sizeof(int16_t) * g->audio_samplerate * g->audio_nchannels * g->audio_nseconds;
-    g->audio_callback = audiocb;
+    g->audio_callback = cfg->audio_callback;
 
     /* alloc the buffer. */
     g->audio_buffer = (int16_t*)malloc(g->audio_nbytes); 
     if (!g->audio_buffer) {
       printf("Error while allocating the audio buffer.");
       g->audio_buffer = NULL;
-      return -5;
+      return -6;
     }
 
     /* fill with silence */
@@ -330,7 +323,7 @@ int video_generator_init(video_generator* g, int w, int h, int fps, video_genera
       printf("Error: cannot initialize the audio mutex!");
       free(g->audio_buffer);
       g->audio_buffer = NULL;
-      return -6;
+      return -7;
     }
 
     /* start audio thread. */
@@ -339,7 +332,7 @@ int video_generator_init(video_generator* g, int w, int h, int fps, video_genera
       printf("Error: cannot create audio thread.\n");
       free(g->audio_buffer);
       g->audio_buffer = NULL;
-      return -7;
+      return -8;
     }
   }
 
@@ -384,6 +377,22 @@ int video_generator_clear(video_generator* g) {
   g->ubytes = 0;
   g->vbytes = 0;
   g->nbytes = 0;
+  g->strides[0] = 0;
+  g->strides[1] = 0;
+  g->strides[2] = 0;
+  g->planes[0] = NULL;
+  g->planes[1] = NULL;
+  g->planes[2] = NULL;
+
+  g->audio_nchannels = 0;
+  g->audio_nseconds = 0;
+  g->audio_samplerate = 0;
+  g->audio_bip_frequency = 0;
+  g->audio_bop_frequency = 0;
+  g->audio_bip_millis = 0;
+  g->audio_bop_millis = 0;
+  g->audio_nbytes = 0;
+  g->audio_callback = NULL;
 
   return 0;
 }
@@ -614,7 +623,6 @@ static void* audio_thread(void* gen) {
   video_generator* g;
   uint8_t must_stop;
   uint64_t now, delay, timeout, dx, bip_start_dx, bip_end_dx, bop_start_dx, bop_end_dx;
-  uint64_t num_samples = 1024;
   uint32_t nbytes = 0; 
   uint8_t* tmp_buffer = NULL;
   uint8_t* audio_buffer = NULL;
@@ -644,8 +652,8 @@ static void* audio_thread(void* gen) {
   now = 0;
   timeout = 0;
   dx = 0;
-  delay = (num_samples * ((double)1.0/g->audio_samplerate) * 1e9);
-  nbytes = num_samples * sizeof(int16_t) * g->audio_nchannels;
+  delay = (g->audio_nsamples * ((double)1.0/g->audio_samplerate) * 1e9);
+  nbytes = g->audio_nsamples * sizeof(int16_t) * g->audio_nchannels;
   tmp_buffer = (uint8_t*)malloc(nbytes);
   audio_buffer = (uint8_t*)g->audio_buffer;
   bytes_needed = nbytes;
@@ -692,13 +700,13 @@ static void* audio_thread(void* gen) {
         /* Read from the start. */
         bytes_from_start = bytes_needed - bytes_to_end;
         memcpy(tmp_buffer + bytes_to_end, audio_buffer, bytes_from_start);
-        g->audio_callback((int16_t*)tmp_buffer, nbytes, num_samples);
+        g->audio_callback((int16_t*)tmp_buffer, nbytes, g->audio_nsamples);
 
         dx = bytes_from_start;
       }
       else {
         /* We can read a complete chunk. */
-        g->audio_callback((int16_t*)(audio_buffer + dx), nbytes, num_samples);
+        g->audio_callback((int16_t*)(audio_buffer + dx), nbytes, g->audio_nsamples);
         dx += nbytes;
       }
 
