@@ -25,7 +25,7 @@ add_library(videogenerator ${lib_sources})
 install(TARGETS videogenerator ARCHIVE DESTINATION lib)
 install(FILES ${lib_headers} DESTINATION include)
 
-add_executable(${app} ${sd}/example.c)
+add_executable(${app} ${sd}/example.c ${lib_sources})
 
 if (WIN32)
 else()
