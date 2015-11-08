@@ -3,26 +3,33 @@
   Video Generator
   ================
 
-  The Video Generator library is used to create a continuous YUV420P video signal with optionally
-  a 44100hz, int16, interleaved 2-channel raw PCM signal. This library was created to test video 
-  and audio encoders over a longer period. Therefore the video signal contains a time field that 
-  shows how long the generator has been running. The time is based on the generated number of 
-  video frames. It's up to the user to make sure that the `video_generator_update()` function 
-  is called often enough to keep up with the number of frames you want to generate.
+  The Video Generator library is used to create a continuous YUV420P
+  video signal with optionally a 44100hz, int16, interleaved 2-channel
+  raw PCM signal. This library was created to test video and audio
+  encoders over a longer period. Therefore the video signal contains a
+  time field that shows how long the generator has been running. The
+  time is based on the generated number of video frames. It's up to
+  the user to make sure that the `video_generator_update()` function
+  is called often enough to keep up with the number of frames you want
+  to generate.
 
 
   Using the Video Generator
   -------------------------
 
-  First initialize the generator using `video_generator_init()` then call `video_generator_update()`
-  every time you want to generate a new video frame. When you call `video_generator_update()` the 
-  `frame` member of the `video_generator` struct is updated. Each time you call `video_generator_update()` 
-  it will update the contents of the Y, U, and V planes. When you're using audio it will call the audio
-  callback at the right intervals to simulate a audio-capture callback. When ready clean memory using 
-  `video_generator_clear()`. 
+  First initialize the generator using `video_generator_init()` then
+  call `video_generator_update()` every time you want to generate a
+  new video frame. When you call `video_generator_update()` the
+  `frame` member of the `video_generator` struct is updated. Each time
+  you call `video_generator_update()` it will update the contents of
+  the Y, U, and V planes. When you're using audio it will call the
+  audio callback at the right intervals to simulate a audio-capture
+  callback. When ready clean memory using `video_generator_clear()`.
 
-  IMPORTANT: when you use audio, note that the callback is called from a separate thread, just like a 
-             normal audio capture callback would do. Do not peform heavy tasks in this callback!
+  IMPORTANT: when you use audio, note that the callback is called from
+             a separate thread, just like a normal audio capture
+             callback would do. Do not peform heavy tasks in this
+             callback!
 
       - video_generator_init()       - initialize, see below for the declaration.
       - video_generator_update()     - generate a new video frame, see below for the declaration.
@@ -187,7 +194,6 @@ extern "C" {
 typedef struct video_generator video_generator;
 typedef struct video_generator_settings video_generator_settings;
 typedef struct video_generator_char video_generator_char;
-
 
 /* 
    When we generate audio we do this from a separate thread to make sure we
