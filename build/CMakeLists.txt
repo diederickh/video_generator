@@ -28,6 +28,7 @@ install(FILES ${lib_headers} DESTINATION include)
 add_executable(${app} ${sd}/example.c)
 
 if (WIN32)
+  target_link_libraries(${app} videogenerator)
 else()
   target_link_libraries(${app} videogenerator pthread)
 endif()
