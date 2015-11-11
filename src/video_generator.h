@@ -31,9 +31,9 @@
              callback would do. Do not peform heavy tasks in this
              callback!
 
-      - video_generator_init()       - initialize, see below for the declaration.
-      - video_generator_update()     - generate a new video frame, see below for the declaration.
-      - video_generator_clear()      - frees allocated memory, see below for the declaration. 
+  video_generator_init()       - initialize, see below for the declaration.
+  video_generator_update()     - generate a new video frame, see below for the declaration.
+  video_generator_clear()      - frees allocated memory, see below for the declaration. 
 
 
   Settings:
@@ -43,12 +43,12 @@
   describes some things about the video and audio you want to generate. You can set the 
   following settings. 
   
-      - width            - width of the video frames (e.g. 640).
-      - height           - height of the video frames (e.g. 480).
-      - fps              - framerate (e.g. 25)
-      - bip_frequency    - the frequency that is used for the bip sound (e.g. 700).
-      - bop_frequency    - the frequency that is used for the bop sound (e.g. 1500).
-      - audio_callback   - set this t the audio callback that will receive the audio buffer. 
+  width            - width of the video frames (e.g. 640).
+  height           - height of the video frames (e.g. 480).
+  fps              - framerate (e.g. 25)
+  bip_frequency    - the frequency that is used for the bip sound (e.g. 700).
+  bop_frequency    - the frequency that is used for the bop sound (e.g. 1500).
+  audio_callback   - set this t the audio callback that will receive the audio buffer. 
 
   Specification
   ---------------

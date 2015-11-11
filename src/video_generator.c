@@ -278,6 +278,16 @@ int video_generator_init(video_generator_settings* cfg, video_generator* g) {
   /* initialize audio */
   if (NULL != cfg->audio_callback) {
 
+    if (0 == cfg->bip_frequency) {
+      printf("Error: audio_callback set but no bip_frequency set. Use e.g. 500.");
+      return -6;
+    }
+
+    if (0 == cfg->bop_frequency) {
+      printf("Error: audio_callback set but no bop_frequency set. Use e.g. 1500.");
+      return -7;
+    }
+
     /* we allocate a buffer up to 4 seconds. */
     g->audio_bip_frequency = cfg->bip_frequency;
     g->audio_bop_frequency = cfg->bop_frequency;
@@ -295,7 +305,7 @@ int video_generator_init(video_generator_settings* cfg, video_generator* g) {
     if (!g->audio_buffer) {
       printf("Error while allocating the audio buffer.");
       g->audio_buffer = NULL;
-      return -6;
+      return -7;
     }
 
     /* fill with silence */
@@ -323,7 +333,7 @@ int video_generator_init(video_generator_settings* cfg, video_generator* g) {
       printf("Error: cannot initialize the audio mutex!");
       free(g->audio_buffer);
       g->audio_buffer = NULL;
-      return -7;
+      return -8;
     }
 
     /* start audio thread. */
@@ -332,7 +342,7 @@ int video_generator_init(video_generator_settings* cfg, video_generator* g) {
       printf("Error: cannot create audio thread.\n");
       free(g->audio_buffer);
       g->audio_buffer = NULL;
-      return -8;
+      return -9;
     }
   }
 
